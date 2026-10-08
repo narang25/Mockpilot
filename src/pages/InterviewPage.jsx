@@ -4,7 +4,8 @@ import { motion } from 'framer-motion'
 import { useTheme } from '../context/ThemeContext'
 import { ArrowLeft, Send, Zap, Sun, Moon, Clock, StopCircle } from 'lucide-react'
 
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY
+const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY
+const GROQ_MODEL = 'openai/gpt-oss-20b'
 
 export default function InterviewPage() {
   const { theme, toggleTheme } = useTheme()
@@ -53,45 +54,35 @@ export default function InterviewPage() {
     try {
       const systemPrompt = buildSystemPrompt(session, questionCount)
 
-      // Build Gemini conversation format
-      const contents = []
+      // Build Groq (OpenAI-compatible) messages format
+      const groqMessages = [
+        { role: 'system', content: systemPrompt }
+      ]
 
-      // Add system instruction as the first user turn context
-      contents.push({
-        role: 'user',
-        parts: [{ text: systemPrompt + '\n\nPlease begin the interview.' }]
-      })
-      contents.push({
-        role: 'model',
-        parts: [{ text: messages[0]?.content || 'Hello, let\'s begin.' }]
-      })
-
-      // Add rest of conversation history (skip first assistant message already added)
-      for (let i = 1; i < messages.length; i++) {
-        const m = messages[i]
-        contents.push({
-          role: m.role === 'user' ? 'user' : 'model',
-          parts: [{ text: m.content }]
+      // Add conversation history
+      for (const m of messages) {
+        groqMessages.push({
+          role: m.role === 'user' ? 'user' : 'assistant',
+          content: m.content
         })
       }
 
       // Add the new user message
-      contents.push({
-        role: 'user',
-        parts: [{ text: userMsg.content }]
-      })
+      groqMessages.push({ role: 'user', content: userMsg.content })
 
       const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+        'https://api.groq.com/openai/v1/chat/completions',
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${GROQ_API_KEY}`,
+          },
           body: JSON.stringify({
-            contents,
-            generationConfig: {
-              temperature: 0.75,
-              maxOutputTokens: 500,
-            }
+            model: GROQ_MODEL,
+            messages: groqMessages,
+            temperature: 0.75,
+            max_tokens: 500,
           })
         }
       )
@@ -102,7 +93,7 @@ export default function InterviewPage() {
       }
 
       const data = await res.json()
-      const aiMsg = data.candidates?.[0]?.content?.parts?.[0]?.text || 'I couldn\'t generate a response. Please try again.'
+      const aiMsg = data.choices?.[0]?.message?.content || 'I couldn\'t generate a response. Please try again.'
       setMessages(prev => [...prev, { role: 'assistant', content: aiMsg }])
       setQuestionCount(q => q + 1)
     } catch (err) {

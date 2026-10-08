@@ -8,7 +8,8 @@ import {
   CheckCircle2, XCircle, ArrowRight, ChevronDown, ChevronUp
 } from 'lucide-react'
 
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY
+const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY
+const GROQ_MODEL = 'openai/gpt-oss-20b'
 
 export default function FeedbackPage() {
   const { theme, toggleTheme } = useTheme()
@@ -54,23 +55,28 @@ Interview at ${data.company?.name} for ${data.role} (${data.interviewType}):
 ${msgs}`
 
       const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+        'https://api.groq.com/openai/v1/chat/completions',
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${GROQ_API_KEY}`,
+          },
           body: JSON.stringify({
-            contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            generationConfig: {
-              temperature: 0.3,
-              maxOutputTokens: 2000,
-            }
+            model: GROQ_MODEL,
+            messages: [
+              { role: 'system', content: 'You are an expert interview coach. You always respond with valid JSON only — no markdown, no code blocks, no backticks, no extra text.' },
+              { role: 'user', content: prompt }
+            ],
+            temperature: 0.3,
+            max_tokens: 2000,
           })
         }
       )
 
       if (!res.ok) throw new Error('API failed')
       const result = await res.json()
-      let content = result.candidates?.[0]?.content?.parts?.[0]?.text || ''
+      let content = result.choices?.[0]?.message?.content || ''
       content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
       setFeedback(JSON.parse(content))
     } catch (err) {
